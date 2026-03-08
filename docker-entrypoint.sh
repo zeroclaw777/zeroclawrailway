@@ -7,6 +7,9 @@ export HOME=/zeroclaw-data
 mkdir -p /zeroclaw-data/.zeroclaw
 mkdir -p /zeroclaw-data/.zeroclaw/workspace
 
+# Set default allowed users if not provided
+TELEGRAM_ALLOWED_USERS="${TELEGRAM_ALLOWED_USERS:-[*]}"
+
 cat > /zeroclaw-data/.zeroclaw/config.toml << EOF
 api_key = "${ZAI_API_KEY:-}"
 default_provider = "${DEFAULT_PROVIDER:-zai}"
@@ -31,7 +34,7 @@ cli = true
 
 [channels_config.telegram]
 bot_token = "${TELEGRAM_BOT_TOKEN}"
-allowed_users = ${TELEGRAM_ALLOWED_USERS:-["*"]}
+allowed_users = ${TELEGRAM_ALLOWED_USERS}
 EOF
 fi
 
