@@ -45,8 +45,10 @@ allow_public_bind = ${ALLOW_PUBLIC_BIND}
 [autonomy]
 level = "${AUTONOMY_LEVEL}"
 workspace_only = ${WORKSPACE_ONLY}
-block_high_risk_commands = ${BLOCK_HIGH_RISK}
 max_actions_per_hour = 100
+max_cost_per_day_cents = 10000
+require_approval_for_medium_risk = false
+block_high_risk_commands = ${BLOCK_HIGH_RISK}
 
 allowed_commands = [
     "git", "gh", "npm", "node", "npx", "yarn", "pnpm",
@@ -68,6 +70,14 @@ shell_env_passthrough = [
     "GIT_COMMITTER_EMAIL",
     "GH_TOKEN"
 ]
+
+allowed_roots = []
+
+auto_approve = ["file_read", "memory_recall"]
+
+always_ask = []
+
+non_cli_excluded_tools = []
 EOF
 
 if [ -n "$TELEGRAM_BOT_TOKEN" ]; then
