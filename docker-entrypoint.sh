@@ -1,11 +1,21 @@
 #!/bin/sh
 set -e
 
+# ============================================================================
+# SECURITY CONFIGURATION
+# ============================================================================
+# By default, the gateway requires pairing and does NOT allow public binding.
+# Override with ZEROCLAW_REQUIRE_PAIRING and ZEROCLAW_ALLOW_PUBLIC_BIND env vars.
+
 # Set HOME to our data directory so zeroclaw finds ~/.zeroclaw/config.toml
 export HOME=/zeroclaw-data
 
 mkdir -p /zeroclaw-data/.zeroclaw
 mkdir -p /zeroclaw-data/.zeroclaw/workspace
+
+# Security defaults (can be overridden via environment variables)
+REQUIRE_PAIRING="${ZEROCLAW_REQUIRE_PAIRING:-true}"
+ALLOW_PUBLIC_BIND="${ZEROCLAW_ALLOW_PUBLIC_BIND:-false}"
 
 # Set default allowed users if not provided (must be valid TOML array with quoted strings)
 TELEGRAM_ALLOWED_USERS="${TELEGRAM_ALLOWED_USERS:-[\"*\"]}"
@@ -23,8 +33,8 @@ auto_save = true
 [gateway]
 port = 42617
 host = "0.0.0.0"
-require_pairing = false
-allow_public_bind = true
+require_pairing = ${ZEROCLAW_REQUIRE_PAIRING:-true}
+allow_public_bind = ${ZEROCLAW_ALLOW_PUBLIC_BIND:-false}
 EOF
 
 if [ -n "$TELEGRAM_BOT_TOKEN" ]; then
