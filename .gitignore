@@ -50,3 +50,8 @@ credentials/
 
 # Railway
 .railway/
+railway.json
+railway.toml
+*.railway.*
+railway-*.json
+railway-*.toml

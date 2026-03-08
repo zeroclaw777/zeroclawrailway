@@ -102,11 +102,153 @@ Only configured **channels** can interact with the agent.
 | `ZEROCLAW_OPEN_SKILLS_DIR` | Open skills directory | - |
 | `ZEROCLAW_SKILLS_PROMPT_MODE` | Skills prompt mode (`full`/`compact`) | `full` |
 
+### Integration Configuration
+
+ZeroClaw supports various integrations for productivity and information gathering.
+
+#### Todoist Integration
+
+| Variable | Description | Required |
+|----------|-------------|----------|
+| `TODOIST_API_TOKEN` | Todoist API token from Settings → Integrations | Yes |
+
+**Get your token:** [Todoist Settings → Integrations → API Token](https://todoist.com/app/settings/integrations)
+
+**Features:**
+- Task synchronization and management
+- Daily briefing generation
+- Project and label queries
+
+#### Gmail/Email Integration
+
+| Variable | Description | Required |
+|----------|-------------|----------|
+| `GMAIL_CLIENT_ID` | Google OAuth2 client ID | Yes |
+| `GMAIL_CLIENT_SECRET` | Google OAuth2 client secret | Yes |
+| `GMAIL_REFRESH_TOKEN` | OAuth2 refresh token | Yes |
+
+**Setup instructions:**
+1. Create OAuth2 credentials in [Google Cloud Console](https://console.cloud.google.com/apis/credentials)
+2. Enable Gmail API in your project
+3. Generate refresh token using OAuth2 flow
+
+**Features:**
+- Email filtering and search
+- Calendar event sync
+- Label management
+
+#### IMAP/POP3 Email Support
+
+| Variable | Description | Required |
+|----------|-------------|----------|
+| `IMAP_HOST` | IMAP server hostname | Yes |
+| `IMAP_PORT` | IMAP server port (default: 993) | No |
+| `IMAP_USER` | IMAP username | Yes |
+| `IMAP_PASSWORD` | IMAP password | Yes |
+| `SMTP_HOST` | SMTP server hostname | For sending |
+| `SMTP_PORT` | SMTP server port (default: 587) | No |
+| `SMTP_USER` | SMTP username | For sending |
+| `SMTP_PASSWORD` | SMTP password | For sending |
+
+**Features:**
+- Email retrieval via IMAP
+- Email sending via SMTP
+- Multiple account support
+
+#### Obsidian Integration
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `OBSIDIAN_VAULT_PATH` | Path to Obsidian vault | `$WORKSPACE/obsidian-vault` |
+| `OBSIDIAN_SYNC_ENABLED` | Enable vault sync | `false` |
+
+**Features:**
+- Note-taking capabilities
+- Markdown file management
+- Vault synchronization
+
+#### News Aggregation
+
+| Variable | Description | Required |
+|----------|-------------|----------|
+| `TWITTER_BEARER_TOKEN` | Twitter/X API bearer token | No |
+| `TWITTER_API_KEY` | Twitter/X API key | No |
+| `TWITTER_API_SECRET` | Twitter/X API secret | No |
+| `TWITTER_ACCESS_TOKEN` | Twitter/X access token | No |
+| `TWITTER_ACCESS_SECRET` | Twitter/X access secret | No |
+| `NEWS_API_KEY` | NewsAPI.org API key | No |
+| `RSS_FEEDS` | Comma-separated list of RSS feed URLs | No |
+
+**Features:**
+- RSS feed parsing
+- Twitter/X timeline access
+- News aggregation and summarization
+
+#### Text-to-Speech (Kokoro TTS)
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `ZEROCLAW_KOKORO_ENABLED` | Enable Kokoro TTS integration | `false` |
+| `ZEROCLAW_KOKORO_VOICE` | Default voice | `af_sarah` |
+| `ZEROCLAW_KOKORO_SPEED` | Speech speed (0.5-2.0) | `1.0` |
+| `ZEROCLAW_KOKORO_LANG` | Language code | `en-us` |
+| `ZEROCLAW_KOKORO_OUTPUT_DIR` | Output directory for audio | `$WORKSPACE/tts-output` |
+
+**Available Voices:**
+- `af_sarah` — Female, American English
+- `am_adam` — Male, American English
+- `bf_emma` — Female, British English
+- `bm_george` — Male, British English
+
+- `af_nicole` — Female, American English
+
+- `af_sky` — Female, American English
+
+**Features:**
+- Convert text to speech from TXT, EPUB, PDF files
+- stdin support for piping text
+- No API keys required — runs locally on CPU
+- Model files (~50MB) downloaded on first use
+
+#### Modal.com GPU Acceleration (Optional)
+
+| Variable | Description | Required |
+|----------|-------------|----------|
+| `ZEROCLAW_MODAL_ENABLED` | Enable Modal GPU acceleration | Yes |
+| `ZEROCLAW_MODAL_TOKEN_ID` | Modal token ID (or `MODAL_TOKEN_ID`) | Yes |
+| `ZEROCLAW_MODAL_TOKEN_SECRET` | Modal token secret (or `MODAL_TOKEN_SECRET`) | Yes |
+| `ZEROCLAW_MODAL_GPU_TYPE` | GPU type: `a10g`, `a100`, `h100` | No (default: `a10g`) |
+
+**Setup:**
+1. Create account at [modal.com](https://modal.com)
+2. Generate tokens: `modal token new`
+3. Set environment variables in Railway
+
+**When to use Modal:**
+- Large text-to-speech jobs (>10k characters)
+- Faster processing needed (GPU vs CPU)
+- Batch processing multiple files
+
+**Cost:** Pay-per-second GPU usage (~$0.0002/sec for A10G)
+
 ### Runtime Configuration
 
 | Variable | Description | Default |
 |----------|-------------|---------|
 | `ZEROCLAW_REASONING_ENABLED` | Enable reasoning mode | - |
+| `ZEROCLAW_UBUNTU_INSTALL_EXTRA_PACKAGES` | Comma-separated list of extra Ubuntu packages to install at startup | - |
+
+**ZEROCLAW_UBUNTU_INSTALL_EXTRA_PACKAGES examples:**
+- Single package: `ffmpeg`
+- Multiple packages: `ffmpeg,imagemagick,pandoc`
+- With spaces (ignored): `ffmpeg, imagemagick, pandoc`
+
+Packages are installed at container startup via `apt-get install -y --no-install-recommends`. Useful for adding tools like:
+- `ffmpeg` — Audio/video processing
+- `imagemagick` — Image manipulation
+- `pandoc` — Document conversion
+- `graphviz` — Diagram generation
+- `texlive-latex-base` — LaTeX support
 
 ### Git/GitHub Configuration
 
@@ -126,6 +268,33 @@ Only configured **channels** can interact with the agent.
 - `owner/repo,another/repo` — Multiple repos
 
 Uses `GITHUB_TOKEN` or `GH_TOKEN` for authenticated cloning if available. Clones into workspace directory with `--depth 1`.
+
+#### Full Git Operations Support
+
+The agent can perform **all git operations** including network operations via the shell tool:
+
+| Git Operation | Risk Level | Approval Required? |
+|---------------|------------|-------------------|
+| `git status`, `git log`, `git diff` | Low | No |
+| `git fetch` | Low | No |
+| `git pull` | Low | No |
+| `git push` | Medium | No (pre-configured) |
+| `git merge` | Medium | No (pre-configured) |
+| `git rebase` | Medium | No (pre-configured) |
+| `git commit`, `git add`, `git checkout` | Medium | No (pre-configured) |
+
+**How it works:** The `require_approval_for_medium_risk = false` setting in the autonomy config allows the agent to execute medium-risk git commands without explicit approval. This is safe for Railway deployments where the agent is the only user.
+
+**Example agent usage:**
+```
+User: Push the changes to main
+Agent: [uses shell tool] git push origin main
+```
+
+**SSH Authentication:** For pushing to private repos, mount your SSH credentials:
+```bash
+docker run -v ~/.ssh:/zeroclaw-data/.ssh:ro ...
+```
 
 ### SOUL.md/AGENTS.md Generation
 
@@ -313,10 +482,86 @@ The agent can execute these commands:
 | **File Ops** | `mkdir`, `mv`, `cp`, `touch`, `rm` |
 | **Editors** | `vim`, `nano` |
 | **Process Management** | `htop`, `ps`, `kill` |
+| **Integrations** | `todoist`, `gmail-cli`, `obsidian`, `news`, `imap`, `feedparser`, `kokoro-tts`, `modal` |
+
+---
+
+## Integration Usage Examples
+
+### Todoist Integration
+
+```bash
+# Environment setup
+TODOIST_API_TOKEN=your-todoist-api-token
+
+# Agent commands
+User: "Add a task to buy groceries tomorrow"
+User: "Show my tasks for today"
+User: "Generate a daily briefing"
+```
+
+### Gmail Integration
+
+```bash
+# Environment setup
+GMAIL_CLIENT_ID=your-client-id.apps.googleusercontent.com
+GMAIL_CLIENT_SECRET=your-client-secret
+GMAIL_REFRESH_TOKEN=your-refresh-token
+
+# Agent commands
+User: "Show unread emails from today"
+User: "Search for emails about project X"
+User: "Draft an email to john@example.com"
+```
+
+### IMAP Email
+
+```bash
+# Environment setup
+IMAP_HOST=imap.gmail.com
+IMAP_PORT=993
+IMAP_USER=your-email@gmail.com
+IMAP_PASSWORD=your-app-password
+SMTP_HOST=smtp.gmail.com
+SMTP_PORT=587
+
+# Agent commands
+User: "Check for new emails"
+User: "List emails from the last 24 hours"
+```
+
+### Obsidian Vault
+
+```bash
+# Environment setup
+OBSIDIAN_VAULT_PATH=/zeroclaw-data/.zeroclaw/workspace/my-vault
+OBSIDIAN_SYNC_ENABLED=true
+
+# Agent commands
+User: "Create a note titled 'Meeting Notes' with today's date"
+User: "Search my vault for references to 'project alpha'"
+User: "Append to my daily note"
+```
+
+### News Aggregation
+
+```bash
+# Environment setup
+TWITTER_BEARER_TOKEN=your-twitter-bearer-token
+NEWS_API_KEY=your-newsapi-key
+RSS_FEEDS=https://feeds.bbci.co.uk/news/rss.xml,https://rss.nytimes.com/services/xml/rss/nyt/HomePage.xml
+
+# Agent commands
+User: "Summarize today's top tech news"
+User: "Check my RSS feeds for updates"
+User: "What's trending on Twitter?"
+```
 
 ---
 
 ## Included Packages
+
+### System Packages
 
 | Package | Description |
 |---------|-------------|
@@ -339,6 +584,29 @@ The agent can execute these commands:
 | `black` | Python formatter |
 | `vim` / `nano` | Text editors |
 | `htop` | System monitor |
+
+### Python Integration Packages
+
+| Package | Description |
+|---------|-------------|
+| `todoist-api-python` | Todoist API client |
+| `google-api-python-client` | Google API client library |
+| `google-auth-oauthlib` | Google OAuth2 authentication |
+| `python-dateutil` | Date/time handling |
+| `pytz` | Timezone support |
+| `icalendar` | Calendar event parsing |
+| `feedparser` | RSS/Atom feed parsing |
+| `beautifulsoup4` | HTML/XML parsing |
+| `lxml` / `html5lib` | HTML parsers |
+| `requests-oauthlib` | OAuth for APIs |
+| `tweepy` | Twitter/X API client |
+| `schedule` | Job scheduling |
+| `imapclient` | IMAP email client |
+| `python-frontmatter` | Markdown frontmatter parsing |
+| `markdown` | Markdown processing |
+| `pyyaml` | YAML processing |
+| `kokoro-tts` | Kokoro TTS engine (ONnx-based) |
+| `modal` | Modal.com serverless GPU platform |
 
 ---
 
@@ -371,6 +639,48 @@ docker run \
   -e TELEGRAM_BOT_TOKEN=your-telegram-token \
   -e DISCORD_BOT_TOKEN=your-discord-token \
   -e SLACK_BOT_TOKEN=xoxb-your-slack-token \
+  zeroclaw-railway
+```
+
+### Personal Assistant Example (with Integrations)
+
+```bash
+docker run \
+  -e ZEROCLAW_PROVIDER=openrouter \
+  -e OPENROUTER_API_KEY=your-key \
+  -e TELEGRAM_BOT_TOKEN=your-telegram-token \
+  -e TODOIST_API_TOKEN=your-todoist-token \
+  -e GMAIL_CLIENT_ID=your-gmail-client-id \
+  -e GMAIL_CLIENT_SECRET=your-gmail-client-secret \
+  -e GMAIL_REFRESH_TOKEN=your-gmail-refresh-token \
+  -e OBSIDIAN_VAULT_PATH=/zeroclaw-data/.zeroclaw/workspace/my-vault \
+  -e RSS_FEEDS="https://feeds.bbci.co.uk/news/rss.xml,https://rss.nytimes.com/services/xml/rss/nyt/HomePage.xml" \
+  -v /path/to/obsidian-vault:/zeroclaw-data/.zeroclaw/workspace/my-vault \
+  zeroclaw-railway
+```
+
+### TTS-Enabled Example
+
+```bash
+docker run \
+  -e ZEROCLAW_PROVIDER=openrouter \
+  -e OPENROUTER_API_KEY=your-key \
+  -e TELEGRAM_BOT_TOKEN=your-telegram-token \
+  -e ZEROCLAW_KOKORO_ENABLED=true \
+  -e ZEROCLAW_KOKORO_VOICE=af_sarah \
+  -v ./tts-output:/zeroclaw-data/.zeroclaw/workspace/tts-output \
+  zeroclaw-railway
+```
+
+### GPU-Accelerated TTS (with Modal)
+```bash
+docker run \
+  -e ZEROCLAW_PROVIDER=openrouter \
+  -e OPENROUTER_API_KEY=your-key \
+  -e ZEROCLAW_KOKORO_ENABLED=true \
+  -e ZEROCLAW_MODAL_ENABLED=true \
+  -e ZEROCLAW_MODAL_TOKEN_ID=your-token-id \
+  -e ZEROCLAW_MODAL_TOKEN_SECRET=your-token-secret \
   zeroclaw-railway
 ```
 

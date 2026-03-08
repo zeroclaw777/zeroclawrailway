@@ -9,6 +9,82 @@ mkdir -p "$ZERCLAW_DIR"
 mkdir -p "$WORKSPACE_DIR"
 
 # =============================================================================
+# Extra Ubuntu Packages Installation
+# =============================================================================
+
+install_extra_packages() {
+    [ -z "$ZEROCLAW_UBUNTU_INSTALL_EXTRA_PACKAGES" ] && return 0
+    
+    echo "Installing extra Ubuntu packages..."
+    
+    # Parse comma-separated list, handling spaces
+    OLD_IFS="$IFS"
+    IFS=','
+    packages=""
+    for pkg in $ZEROCLAW_UBUNTU_INSTALL_EXTRA_PACKAGES; do
+        pkg=$(echo "$pkg" | tr -d ' ')
+        [ -z "$pkg" ] && continue
+        packages="$packages $pkg"
+    done
+    IFS="$OLD_IFS"
+    
+    if [ -n "$packages" ]; then
+        echo "  Packages: $packages"
+        apt-get update -qq && \
+        apt-get install -y --no-install-recommends $packages && \
+        rm -rf /var/lib/apt/lists/* && \
+        echo "  ✓ Extra packages installed" || \
+        echo "  ⚠️  Some packages may have failed to install"
+    fi
+}
+
+install_extra_packages
+
+setup_kokoro_tts() {
+    [ "${ZEROCLAW_KOKORO_ENABLED:-false}" != "true" ] && return 0
+    
+    echo "Setting up Kokoro TTS..."
+    
+    KOKORO_MODEL_DIR="${ZEROCLAW_KOKORO_MODEL_DIR:-$WORKSPACE_DIR/.kokoro-models}"
+    KOKORO_OUTPUT_DIR="${ZEROCLAW_KOKORO_OUTPUT_DIR:-$WORKSPACE_DIR/tts-output}"
+    mkdir -p "$KOKORO_MODEL_DIR" "$KOKORO_OUTPUT_DIR"
+    
+    if [ ! -f "$KOKORO_MODEL_DIR/kokoro-v1.0.onnx" ]; then
+        echo "  Downloading Kokoro model files (first run)..."
+        (
+            cd "$KOKORO_MODEL_DIR"
+            echo "test" | /opt/venv/bin/kokoro-tts --voice "${ZEROCLAW_KOKORO_VOICE:-af_sarah}" - /dev/null 2>/dev/null || true
+        )
+        echo "  Model files ready"
+    fi
+    
+    export KOKORO_MODEL_PATH="$KOKORO_MODEL_DIR"
+    echo "  Voice: ${ZEROCLAW_KOKORO_VOICE:-af_sarah}"
+    echo "  Output: $KOKORO_OUTPUT_DIR"
+    echo "  Kokoro TTS configured"
+}
+
+setup_modal() {
+    [ "${ZEROCLAW_MODAL_ENABLED:-false}" != "true" ] && return 0
+    
+    echo "Setting up Modal.com..."
+    
+    if [ -n "$ZEROCLAW_MODAL_TOKEN_ID" ] && [ -n "$ZEROCLAW_MODAL_TOKEN_SECRET" ]; then
+        export MODAL_TOKEN_ID="$ZEROCLAW_MODAL_TOKEN_ID"
+        export MODAL_TOKEN_SECRET="$ZEROCLAW_MODAL_TOKEN_SECRET"
+        echo "  Modal credentials configured"
+    elif [ -n "$MODAL_TOKEN_ID" ] && [ -n "$MODAL_TOKEN_SECRET" ]; then
+        echo "  Modal credentials found in environment"
+    else
+        echo "  Modal enabled but no credentials found"
+        echo "  Set ZEROCLAW_MODAL_TOKEN_ID and ZEROCLAW_MODAL_TOKEN_SECRET"
+    fi
+}
+
+setup_kokoro_tts
+setup_modal
+
+# =============================================================================
 # Git Repository Cloning
 # =============================================================================
 
@@ -80,43 +156,155 @@ detect_tech_stack() {
     
     [ ! -d "$repo_dir" ] && return
     
-    # Rust
     if [ -f "$repo_dir/Cargo.toml" ]; then
         stack="$stack- **Rust**: "
         stack="$stack$(grep -E "^name|^version" "$repo_dir/Cargo.toml" 2>/dev/null | tr '\n' ' ' | head -c 100)"
         stack="$stack\n"
     fi
     
-    # Node.js/TypeScript
     if [ -f "$repo_dir/package.json" ]; then
         stack="$stack- **Node.js/TypeScript**: "
         stack="$stack$(grep -E '"name"|"version"' "$repo_dir/package.json" 2>/dev/null | tr '\n' ' ' | head -c 100)"
         stack="$stack\n"
     fi
     
-    # Python
     if [ -f "$repo_dir/pyproject.toml" ] || [ -f "$repo_dir/requirements.txt" ] || [ -f "$repo_dir/setup.py" ]; then
         stack="$stack- **Python** project detected\n"
     fi
     
-    # Go
     if [ -f "$repo_dir/go.mod" ]; then
         stack="$stack- **Go**: "
         stack="$stack$(head -5 "$repo_dir/go.mod" 2>/dev/null | tr '\n' ' ')"
         stack="$stack\n"
     fi
     
-    # Docker
     if [ -f "$repo_dir/Dockerfile" ] || [ -f "$repo_dir/docker-compose.yml" ]; then
         stack="$stack- **Docker** containerization\n"
     fi
     
-    # Database
     if [ -f "$repo_dir/sql/" ] || ls "$repo_dir"/*.sql 1>/dev/null 2>&1; then
         stack="$stack- **SQL/Database** schemas present\n"
     fi
     
     printf "%s" "$stack"
+}
+
+scan_dependencies() {
+    local repo_dir="$1"
+    local deps=""
+    local max_deps=20
+    
+    [ ! -d "$repo_dir" ] && return
+    
+    if [ -f "$repo_dir/Cargo.toml" ]; then
+        local cargo_deps=$(grep -A 100 "^\[dependencies\]" "$repo_dir/Cargo.toml" 2>/dev/null | grep -B 100 "^\[" | grep -v "^\[" | grep -v "^$" | grep "^[a-z]" | head -$max_deps | awk -F'=' '{print $1}' | tr -d ' ' | tr '\n' ', ' | sed 's/,$//')
+        if [ -n "$cargo_deps" ]; then
+            deps="$deps- **Rust (Cargo)**: $cargo_deps\n"
+        fi
+    fi
+    
+    if [ -f "$repo_dir/package.json" ]; then
+        local npm_deps=$(cat "$repo_dir/package.json" 2>/dev/null | grep -A 100 '"dependencies"' | grep -B 100 "}" | grep ":" | grep -v "dependencies" | head -$max_deps | sed 's/[",:]//g' | awk '{print $1}' | tr '\n' ', ' | sed 's/,$//')
+        if [ -n "$npm_deps" ]; then
+            deps="$deps- **Node.js (npm)**: $npm_deps\n"
+        fi
+        local dev_deps=$(cat "$repo_dir/package.json" 2>/dev/null | grep -A 100 '"devDependencies"' | grep -B 100 "}" | grep ":" | grep -v "devDependencies" | head -10 | sed 's/[",:]//g' | awk '{print $1}' | tr '\n' ', ' | sed 's/,$//')
+        if [ -n "$dev_deps" ]; then
+            deps="$deps- **Dev Dependencies**: $dev_deps\n"
+        fi
+    fi
+    
+    if [ -f "$repo_dir/requirements.txt" ]; then
+        local py_deps=$(grep -v "^#" "$repo_dir/requirements.txt" 2>/dev/null | grep -v "^$" | head -$max_deps | sed 's/[<>=!].*//' | tr '\n' ', ' | sed 's/,$//')
+        if [ -n "$py_deps" ]; then
+            deps="$deps- **Python (requirements)**: $py_deps\n"
+        fi
+    fi
+    
+    if [ -f "$repo_dir/pyproject.toml" ]; then
+        local poetry_deps=$(grep -A 50 "^\[tool.poetry.dependencies\]" "$repo_dir/pyproject.toml" 2>/dev/null | grep -v "^\[" | grep -v "^$" | grep "^[a-z]" | head -$max_deps | awk -F'=' '{print $1}' | tr -d ' ' | tr '\n' ', ' | sed 's/,$//')
+        if [ -n "$poetry_deps" ]; then
+            deps="$deps- **Python (Poetry)**: $poetry_deps\n"
+        fi
+    fi
+    
+    if [ -f "$repo_dir/go.mod" ]; then
+        local go_deps=$(grep "^\s*require" "$repo_dir/go.mod" 2>/dev/null | head -1 | sed 's/require//' | tr -d '()' | tr '\n' ' ' | awk '{for(i=1;i<=NF&&i<='$max_deps';i++) printf "%s, ", $i}' | sed 's/, $//')
+        if [ -n "$go_deps" ]; then
+            deps="$deps- **Go modules**: $go_deps\n"
+        fi
+    fi
+    
+    printf "%s" "$deps"
+}
+
+scan_code_patterns() {
+    local repo_dir="$1"
+    local patterns=""
+    
+    [ ! -d "$repo_dir" ] && return
+    
+    if [ -f "$repo_dir/Cargo.toml" ]; then
+        local has_async=$(grep -r "async fn" "$repo_dir/src" 2>/dev/null | head -1)
+        local has_trait=$(grep -r "^pub trait" "$repo_dir/src" 2>/dev/null | head -1)
+        local has_impl=$(grep -r "^impl" "$repo_dir/src" 2>/dev/null | head -1)
+        local has_error=$(grep -r "thiserror\|anyhow\|Result<" "$repo_dir/src" 2>/dev/null | head -1)
+        
+        if [ -n "$has_async" ] || [ -n "$has_trait" ]; then
+            patterns="$patterns- **Rust patterns**: "
+            [ -n "$has_async" ] && patterns="$patterns async/await,"
+            [ -n "$has_trait" ] && patterns="$patterns traits,"
+            [ -n "$has_impl" ] && patterns="$patterns impl blocks,"
+            [ -n "$has_error" ] && patterns="$patterns Result-based error handling"
+            patterns="$patterns\n"
+        fi
+    fi
+    
+    if [ -f "$repo_dir/package.json" ]; then
+        local has_async=$(grep -r "async function\|async (" "$repo_dir/src" "$repo_dir/lib" 2>/dev/null | head -1)
+        local has_class=$(grep -r "^class\|^export class" "$repo_dir/src" "$repo_dir/lib" 2>/dev/null | head -1)
+        local has_hooks=$(grep -r "use[A-Z]" "$repo_dir/src" "$repo_dir/lib" 2>/dev/null | head -1)
+        local has_ts=$(ls "$repo_dir/src"/*.ts "$repo_dir/src"/*.tsx 2>/dev/null | head -1)
+        
+        if [ -n "$has_async" ] || [ -n "$has_class" ] || [ -n "$has_hooks" ]; then
+            patterns="$patterns- **TypeScript/JS patterns**: "
+            [ -n "$has_ts" ] && patterns="$patterns TypeScript,"
+            [ -n "$has_async" ] && patterns="$patterns async/await,"
+            [ -n "$has_class" ] && patterns="$patterns class-based,"
+            [ -n "$has_hooks" ] && patterns="$patterns React hooks"
+            patterns="$patterns\n"
+        fi
+    fi
+    
+    if [ -f "$repo_dir/pyproject.toml" ] || [ -f "$repo_dir/requirements.txt" ]; then
+        local has_class=$(grep -r "^class " "$repo_dir/src" "$repo_dir/app" "$repo_dir/lib" 2>/dev/null | head -1)
+        local has_async=$(grep -r "async def\|await " "$repo_dir/src" "$repo_dir/app" 2>/dev/null | head -1)
+        local has_dataclass=$(grep -r "@dataclass" "$repo_dir/src" "$repo_dir/app" 2>/dev/null | head -1)
+        
+        if [ -n "$has_class" ] || [ -n "$has_async" ]; then
+            patterns="$patterns- **Python patterns**: "
+            [ -n "$has_class" ] && patterns="$patterns class-based,"
+            [ -n "$has_async" ] && patterns="$patterns async/await,"
+            [ -n "$has_dataclass" ] && patterns="$patterns dataclasses"
+            patterns="$patterns\n"
+        fi
+    fi
+    
+    if [ -f "$repo_dir/go.mod" ]; then
+        local has_interface=$(grep -r "^type.*interface" "$repo_dir" 2>/dev/null | head -1)
+        local has_struct=$(grep -r "^type.*struct" "$repo_dir" 2>/dev/null | head -1)
+        local has_goroutine=$(grep -r "go func\|go " "$repo_dir" 2>/dev/null | head -1)
+        
+        if [ -n "$has_interface" ] || [ -n "$has_struct" ]; then
+            patterns="$patterns- **Go patterns**: "
+            [ -n "$has_interface" ] && patterns="$patterns interfaces,"
+            [ -n "$has_struct" ] && patterns="$patterns structs,"
+            [ -n "$has_goroutine" ] && patterns="$patterns goroutines"
+            patterns="$patterns\n"
+        fi
+    fi
+    
+    printf "%s" "$patterns"
 }
 
 get_repo_readme_summary() {
@@ -195,6 +383,22 @@ SOUL_HEADER
                 if [ -n "$tech_stack" ]; then
                     echo "**Technology Stack:**" >> "$soul_file"
                     printf "%s" "$tech_stack" >> "$soul_file"
+                    echo "" >> "$soul_file"
+                fi
+                
+                # Dependency analysis
+                deps=$(scan_dependencies "$repo_dir")
+                if [ -n "$deps" ]; then
+                    echo "**Dependencies:**" >> "$soul_file"
+                    printf "%s" "$deps" >> "$soul_file"
+                    echo "" >> "$soul_file"
+                fi
+                
+                # Code patterns
+                patterns=$(scan_code_patterns "$repo_dir")
+                if [ -n "$patterns" ]; then
+                    echo "**Code Patterns:**" >> "$soul_file"
+                    printf "%s" "$patterns" >> "$soul_file"
                     echo "" >> "$soul_file"
                 fi
                 
@@ -316,6 +520,90 @@ Agents use a fallback chain for resilience:
 Example: `ux-designer` → `ux-manager` → `main`
 
 ---
+
+## Role-Specific System Prompts
+
+### Main Agent (`main`)
+```
+You are a versatile software agent capable of handling diverse development tasks.
+Focus on understanding the user's intent and delivering working solutions.
+Use available tools to read, write, and execute code as needed.
+Report progress clearly and ask for clarification when requirements are ambiguous.
+```
+
+### Architect (`architect`)
+```
+You are a software architect focused on system design and technical decisions.
+Evaluate trade-offs between approaches (performance vs maintainability vs cost).
+Document architectural decisions with rationale.
+Consider scalability, security, and operational concerns.
+Propose concrete implementation plans, not just high-level ideas.
+```
+
+### Security Auditor (`security-auditor`)
+```
+You are a security-focused agent reviewing code and systems for vulnerabilities.
+Check for: injection risks, authentication issues, data exposure, misconfigurations.
+Reference OWASP guidelines and security best practices.
+Provide specific remediation steps, not just problem identification.
+Prioritize findings by severity and exploitability.
+```
+
+### Code Reviewer (`code-reviewer`)
+```
+You are a code reviewer focused on quality, maintainability, and best practices.
+Check for: code smells, naming conventions, error handling, test coverage.
+Suggest improvements that are actionable and specific.
+Balance strictness with pragmatism - not every style issue needs fixing.
+Focus on changes that measurably improve the codebase.
+```
+
+### Backend Developer (`backend-dev`)
+```
+You are a backend developer focused on APIs, services, and data processing.
+Design RESTful/GraphQL APIs with clear contracts.
+Handle errors gracefully and log appropriately.
+Consider database performance and query optimization.
+Write tests for critical paths and edge cases.
+```
+
+### Frontend Developer (`frontend-dev`)
+```
+You are a frontend developer focused on user interfaces and client-side logic.
+Create responsive, accessible UI components.
+Manage state efficiently and handle loading/error states.
+Optimize for performance (lazy loading, code splitting).
+Follow existing component patterns and design system.
+```
+
+### DevOps Engineer (`devops-engineer`)
+```
+You are a DevOps engineer focused on infrastructure and deployment.
+Automate repetitive tasks with scripts and CI/CD pipelines.
+Monitor system health and set up alerting.
+Document infrastructure and runbooks.
+Consider cost optimization and security hardening.
+```
+
+### Test Engineer (`test-agent`)
+```
+You are a test engineer focused on quality assurance.
+Write unit, integration, and end-to-end tests as appropriate.
+Focus on edge cases, error conditions, and boundary values.
+Ensure tests are maintainable and not brittle.
+Report test results clearly with reproduction steps for failures.
+```
+
+### Data Engineer (`data-engineer`)
+```
+You are a data engineer focused on data pipelines and storage.
+Design efficient ETL/ELT processes.
+Ensure data quality and handle schema evolution.
+Consider scalability for large datasets.
+Document data models and transformation logic.
+```
+
+---
 *This file is regenerated on container restart.*
 AGENT_ROLES
 
@@ -387,7 +675,15 @@ allowed_commands = [
     "ls", "cat", "grep", "find", "echo", "pwd", "wc", "head", "tail", "date",
     "mkdir", "mv", "cp", "touch", "rm",
     "vim", "nano",
-    "htop", "ps", "kill"
+    "htop", "ps", "kill",
+    "todoist",
+    "gmail-cli",
+    "obsidian",
+    "news",
+    "imap",
+    "feedparser",
+    "kokoro-tts",
+    "modal"
 ]
 
 forbidden_paths = []
@@ -398,7 +694,10 @@ shell_env_passthrough = [
     "GIT_AUTHOR_EMAIL",
     "GIT_COMMITTER_NAME", 
     "GIT_COMMITTER_EMAIL",
-    "GH_TOKEN"
+    "GH_TOKEN",
+    "MODAL_TOKEN_ID",
+    "MODAL_TOKEN_SECRET",
+    "KOKORO_MODEL_PATH"
 ]
 
 allowed_roots = []

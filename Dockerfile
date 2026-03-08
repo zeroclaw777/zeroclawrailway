@@ -6,6 +6,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     netcat-openbsd dnsutils httpie gh \
     postgresql-client mysql-client redis-tools sqlite3 \
     python3 python3-pip python3-venv nodejs npm build-essential jq yq \
+    # Kokoro TTS dependencies
+    espeak-ng \
     && rm -rf /var/lib/apt/lists/*
 ENV PATH="/usr/local/go/bin:/root/.cargo/bin:/root/.local/bin:/opt/venv/bin:${PATH}"
 RUN curl -sL https://go.dev/dl/go1.23.4.linux-amd64.tar.gz | tar -C /usr/local -xzf -
@@ -14,7 +16,17 @@ RUN curl -sL https://github.com/ast-grep/ast-grep/releases/latest/download/app-x
     unzip /tmp/sg.zip -d /tmp/sg && mv /tmp/sg/sg /usr/local/bin/sg && chmod +x /usr/local/bin/sg && rm -rf /tmp/sg /tmp/sg.zip
 RUN npm install -g eslint prettier typescript ts-node pnpm yarn jest vitest
 RUN python3 -m venv /opt/venv && /opt/venv/bin/pip install --upgrade pip && \
-    /opt/venv/bin/pip install black ruff mypy requests poetry pytest pytest-asyncio httpie
+    /opt/venv/bin/pip install black ruff mypy requests poetry pytest pytest-asyncio httpie \
+    todoist-api-python \
+    google-api-python-client google-auth-httplib2 google-auth-oauthlib \
+    python-dateutil pytz icalendar \
+    feedparser beautifulsoup4 requests-oauthlib tweepy \
+    schedule \
+    imapclient \
+    python-frontmatter markdown pyyaml \
+    lxml html5lib \
+    kokoro-tts \
+    modal
 RUN apt-get update && apt-get install -y --no-install-recommends lnav && rm -rf /var/lib/apt/lists/*
 RUN curl -sL https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip -o /tmp/awscli.zip && \
     unzip /tmp/awscli.zip -d /tmp && /tmp/aws/install && rm -rf /tmp/aws /tmp/awscli.zip
