@@ -15,5 +15,5 @@ WORKDIR /zeroclaw-data
 
 EXPOSE 42617
 
-ENTRYPOINT ["docker-entrypoint.sh"]
+ENTRYPOINT ["/usr/local/bin/docker-entrypoint.sh"]
 CMD ["zeroclaw", "daemon"]
