@@ -6,19 +6,18 @@ Custom Docker image for deploying ZeroClaw on Railway with Telegram channel supp
 
 - Generates config from environment variables at runtime
 - Supports Telegram channel out of the box
-- **Secure by default**: Gateway requires pairing and does not allow public binding
+- **Secure by default**: Gateway bound to localhost only, NOT exposed to internet
 - No hardcoded secrets
-- Includes development tools: git, gh CLI, Node.js, Rust/Cargo, vim, neovim, htop, bun, fastfetch
+- Includes development tools: git, Node.js, Rust/Cargo, vim, htop
 
 ## Security Configuration
 
-By default, the gateway is secured:
-- `require_pairing = true` - Clients must pair before accessing the API
-- `allow_public_bind = false` - Gateway only accessible via tunnel or localhost
+The gateway is **NOT exposed to the internet**:
+- `host = "127.0.0.1"` - Gateway only accessible from localhost
+- `require_pairing = true` - Even local access requires pairing
+- `allow_public_bind = false` - Cannot bind to public interfaces
 
-Override these with environment variables:
-- `ZEROCLAW_REQUIRE_PAIRING` - Set to `false` to disable pairing requirement
-- `ZEROCLAW_ALLOW_PUBLIC_BIND` - Set to `true` to allow public binding (NOT RECOMMENDED)
+Only the **Telegram channel** can interact with the agent. The HTTP gateway is localhost-only.
 
 ## Required Environment Variables
 
@@ -29,19 +28,15 @@ Override these with environment variables:
 | `ZEROCLAW_MODEL` | Model to use (default: glm-5) | No |
 | `DEFAULT_PROVIDER` | Provider (default: zai) | No |
 | `TELEGRAM_ALLOWED_USERS` | JSON array of allowed users (default: ["*"]) | No |
-| `ZEROCLAW_REQUIRE_PAIRING` | Require pairing for gateway (default: true) | No |
-| `ZEROCLAW_ALLOW_PUBLIC_BIND` | Allow public binding (default: false) | No |
 
 ## Included Packages
 
-The image includes these tools (installed via apt-get):
+The image includes these tools:
 - `git` - Version control
-- `gh` - GitHub CLI
-- `nodejs` - Node.js runtime
-- `cargo` - Rust package manager
-- `vim` / `neovim` - Text editors
+- `nodejs` / `npm` - Node.js runtime
+- `cargo` - Rust package manager (via rustup)
+- `vim` - Text editor
 - `htop` - System monitor
-- `bun` - JavaScript runtime
 
 ## Usage
 
