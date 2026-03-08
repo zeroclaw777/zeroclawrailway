@@ -1,12 +1,12 @@
 # ZeroClaw Railway Image
 
-Custom Docker image for deploying ZeroClaw on Railway with Telegram channel support.
+Custom Docker image for deploying ZeroClaw on Railway with **multi-channel support**.
 
 ## Features
 
 - Generates config from environment variables at runtime
 - Supports **all ZeroClaw providers** via environment variables
-- **Telegram channel** out of the box
+- **Multi-channel support**: Telegram, Discord, Slack, Matrix, WhatsApp, and more
 - **Secure by default**: Gateway bound to localhost only, NOT exposed to internet
 - No hardcoded secrets
 - **Full autonomy mode** - autonomous execution within policy bounds
@@ -19,7 +19,7 @@ The gateway is **NOT exposed to the internet**:
 - `require_pairing = true` - Even local access requires pairing
 - `allow_public_bind = false` - Cannot bind to public interfaces
 
-Only the **Telegram channel** can interact with the agent.
+Only configured **channels** can interact with the agent.
 
 ---
 
@@ -107,13 +107,6 @@ Only the **Telegram channel** can interact with the agent.
 |----------|-------------|---------|
 | `ZEROCLAW_REASONING_ENABLED` | Enable reasoning mode | - |
 
-### Telegram Configuration
-
-| Variable | Description | Required |
-|----------|-------------|----------|
-| `TELEGRAM_BOT_TOKEN` | Telegram bot token | Yes (for Telegram) |
-| `TELEGRAM_ALLOWED_USERS` | JSON array of allowed users | No (default: `["*"]`) |
-
 ### Git/GitHub Configuration
 
 | Variable | Description |
@@ -124,6 +117,143 @@ Only the **Telegram channel** can interact with the agent.
 | `GIT_AUTHOR_EMAIL` | Git author email |
 | `GIT_COMMITTER_NAME` | Git committer name |
 | `GIT_COMMITTER_EMAIL` | Git committer email |
+
+---
+
+## Channel Configuration
+
+ZeroClaw supports **multiple communication channels**. Configure them via environment variables or in `config.toml`.
+
+### Supported Channels
+
+| Channel | Description | Config Key |
+|---------|-------------|------------|
+| **CLI** | Command-line interface (built-in) | `cli` |
+| **Telegram** | Telegram bot | `telegram` |
+| **Discord** | Discord bot | `discord` |
+| **Slack** | Slack bot | `slack` |
+| **Mattermost** | Self-hosted chat | `mattermost` |
+| **Matrix** | Decentralized chat (matrix.org) | `matrix` |
+| **WhatsApp** | Business Cloud API or Web mode | `whatsapp` |
+| **Signal** | Encrypted messaging | `signal` |
+| **Webhook** | HTTP endpoint | `webhook` |
+| **iMessage** | macOS only | `imessage` |
+| **Email** | SMTP email | `email` |
+| **IRC** | IRC channels | `irc` |
+| **Lark / Feishu** | ByteDance collaboration | `lark`, `feishu` |
+| **DingTalk** | Alibaba collaboration | `dingtalk` |
+| **QQ** | Tencent QQ | `qq` |
+| **Nostr** | Decentralized protocol | `nostr` |
+| **Linq** | Custom channel | `linq` |
+| **Nextcloud Talk** | Self-hosted chat | `nextcloud_talk` |
+
+### Telegram Configuration
+
+| Variable | Description | Required |
+|----------|-------------|----------|
+| `TELEGRAM_BOT_TOKEN` | Bot token from @BotFather | Yes |
+| `TELEGRAM_ALLOWED_USERS` | JSON array of allowed users/IDs | No (default: `["*"]`) |
+
+**Example config.toml:**
+```toml
+[channels_config]
+cli = true
+
+[channels_config.telegram]
+bot_token = "123456:ABC-DEF1234ghIkl-zyx57W2v1u123ew11"
+allowed_users = ["*"]  # Or specific usernames/IDs
+stream_mode = "partial"
+mention_only = false
+```
+
+### Discord Configuration
+
+| Variable | Description | Required |
+|----------|-------------|----------|
+| `DISCORD_BOT_TOKEN` | Bot token from Discord Developer Portal | Yes |
+| `DISCORD_GUILD_ID` | Server ID to restrict bot | No |
+| `DISCORD_ALLOWED_USERS` | JSON array of allowed user IDs | No |
+
+**Example config.toml:**
+```toml
+[channels_config.discord]
+bot_token = "your-discord-bot-token"
+guild_id = "123456789012345678"
+allowed_users = ["*"]
+mention_only = false
+listen_to_bots = false
+```
+
+### Slack Configuration
+
+| Variable | Description | Required |
+|----------|-------------|----------|
+| `SLACK_BOT_TOKEN` | Bot OAuth token (xoxb-...) | Yes |
+| `SLACK_APP_TOKEN` | App-level token for Socket Mode (xapp-...) | No |
+| `SLACK_CHANNEL_ID` | Channel ID to restrict bot | No |
+
+**Example config.toml:**
+```toml
+[channels_config.slack]
+bot_token = "xoxb-your-bot-token"
+app_token = "xapp-your-app-token"
+channel_id = "C1234567890"
+allowed_users = ["*"]
+```
+
+### Matrix Configuration
+
+| Variable | Description | Required |
+|----------|-------------|----------|
+| `MATRIX_HOMESERVER` | Homeserver URL (e.g., `https://matrix.org`) | Yes |
+| `MATRIX_ACCESS_TOKEN` | Access token for bot account | Yes |
+| `MATRIX_ROOM_ID` | Room ID (e.g., `!abc123:matrix.org`) | Yes |
+| `MATRIX_ALLOWED_USERS` | JSON array of allowed user IDs | No |
+
+**Example config.toml:**
+```toml
+[channels_config.matrix]
+homeserver = "https://matrix.org"
+access_token = "your-access-token"
+user_id = "@bot:matrix.org"
+room_id = "!abc123:matrix.org"
+allowed_users = ["@user:matrix.org"]
+```
+
+### WhatsApp Configuration
+
+| Variable | Description | Mode |
+|----------|-------------|------|
+| `WHATSAPP_ACCESS_TOKEN` | Meta Business access token | Cloud API |
+| `WHATSAPP_PHONE_NUMBER_ID` | Phone number ID from Meta | Cloud API |
+| `WHATSAPP_VERIFY_TOKEN` | Webhook verify token | Cloud API |
+| `WHATSAPP_APP_SECRET` | App secret (or `ZEROCLAW_WHATSAPP_APP_SECRET`) | Cloud API |
+| `WHATSAPP_SESSION_PATH` | Session database path | Web mode |
+| `WHATSAPP_ALLOWED_NUMBERS` | JSON array of allowed numbers | Both |
+
+**Example config.toml (Cloud API):**
+```toml
+[channels_config.whatsapp]
+access_token = "your-meta-access-token"
+phone_number_id = "123456789012345"
+verify_token = "your-verify-token"
+app_secret = "your-app-secret"
+allowed_numbers = ["+1234567890"]
+```
+
+### Webhook Configuration
+
+| Variable | Description | Required |
+|----------|-------------|----------|
+| `WEBHOOK_PORT` | Port to listen on | Yes |
+| `WEBHOOK_SECRET` | Secret for signature verification | No |
+
+**Example config.toml:**
+```toml
+[channels_config.webhook]
+port = 8080
+secret = "your-webhook-secret"
+```
 
 ---
 
@@ -195,17 +325,38 @@ docker run \
   zeroclaw-railway
 ```
 
+### Multi-Channel Example
+
+```bash
+docker run \
+  -e ZEROCLAW_PROVIDER=openrouter \
+  -e OPENROUTER_API_KEY=your-key \
+  -e TELEGRAM_BOT_TOKEN=your-telegram-token \
+  -e DISCORD_BOT_TOKEN=your-discord-token \
+  -e SLACK_BOT_TOKEN=xoxb-your-slack-token \
+  zeroclaw-railway
+```
+
 ---
 
 ## ZeroClaw Native Documentation
 
-For complete documentation of all ZeroClaw environment variables and configuration options, see:
+For complete documentation of all ZeroClaw features, see the official docs:
+
+### Official Documentation
 
 - **ZeroClaw Repository**: [github.com/zeroclaw-labs/zeroclaw](https://github.com/zeroclaw-labs/zeroclaw)
 - **Configuration Reference**: [docs/config-reference.md](https://github.com/zeroclaw-labs/zeroclaw/blob/main/docs/config-reference.md)
-- **Commands Reference**: [docs/commands-reference.md](https://github.com/zeroclaw-labs/zeroclaw/blob/main/docs/commands-reference.md)
+- **Channels Reference**: [docs/channels-reference.md](https://github.com/zeroclaw-labs/zeroclaw/blob/main/docs/channels-reference.md)
 - **Providers Reference**: [docs/providers-reference.md](https://github.com/zeroclaw-labs/zeroclaw/blob/main/docs/providers-reference.md)
+- **Commands Reference**: [docs/commands-reference.md](https://github.com/zeroclaw-labs/zeroclaw/blob/main/docs/commands-reference.md)
 - **Troubleshooting**: [docs/troubleshooting.md](https://github.com/zeroclaw-labs/zeroclaw/blob/main/docs/troubleshooting.md)
+
+### Key Configuration Files
+
+- **Environment Variables**: [docs/config-reference.md#environment-variables](https://github.com/zeroclaw-labs/zeroclaw/blob/main/docs/config-reference.md#environment-variables)
+- **Autonomy Settings**: [docs/config-reference.md#autonomy](https://github.com/zeroclaw-labs/zeroclaw/blob/main/docs/config-reference.md#autonomy)
+- **Channel Setup**: [docs/channels-reference.md](https://github.com/zeroclaw-labs/zeroclaw/blob/main/docs/channels-reference.md)
 
 ---
 
