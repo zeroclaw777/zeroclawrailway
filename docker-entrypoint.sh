@@ -867,6 +867,14 @@ BLOCK_HIGH_RISK="${ZEROCLAW_BLOCK_HIGH_RISK:-false}"
 # Maximum tool iterations before stopping (default: 200)
 MAX_TOOL_ITERATIONS="${ZEROCLAW_MAX_TOOL_ITERATIONS:-200}"
 
+# Context compaction - set to false for large context models (e.g., glm-5 with 200k tokens)
+# Default true is optimized for 13B or smaller models
+COMPACT_CONTEXT="${ZEROCLAW_COMPACT_CONTEXT:-false}"
+
+# Maximum history messages to retain (default: 50)
+# Increase for large context models - glm-5 can handle 200+ messages easily
+MAX_HISTORY_MESSAGES="${ZEROCLAW_MAX_HISTORY_MESSAGES:-200}"
+
 # Build config.toml - leave values empty to let env vars take precedence via apply_env_overrides()
 cat > "$ZERCLAW_DIR/config.toml" << EOF
 # Provider config - env vars (ZEROCLAW_*) take precedence via apply_env_overrides()
@@ -887,6 +895,8 @@ allow_public_bind = ${ALLOW_PUBLIC_BIND}
 
 [agent]
 max_tool_iterations = ${MAX_TOOL_ITERATIONS}
+compact_context = ${COMPACT_CONTEXT}
+max_history_messages = ${MAX_HISTORY_MESSAGES}
 
 [autonomy]
 level = "${AUTONOMY_LEVEL}"
