@@ -681,6 +681,75 @@ Suggest daily focus areas based on workload.
 
 ---
 
+## Available CLI Tools Reference
+
+### Task Management: `todoist-cli`
+
+| Command | Description |
+|---------|-------------|
+| `todoist-cli list` | List all tasks |
+| `todoist-cli list --project NAME` | Filter by project |
+| `todoist-cli list --overdue` | Show only overdue |
+| `todoist-cli list --json` | JSON output |
+| `todoist-cli add "Task" --due "tomorrow"` | Add task with due date |
+| `todoist-cli add "Task" --project Work --priority 4` | Add with project and priority |
+| `todoist-cli add "Task" --labels "urgent,work"` | Add with labels |
+| `todoist-cli complete TASK_ID` | Complete a task |
+| `todoist-cli projects` | List all projects |
+| `todoist-cli labels` | List all labels |
+| `todoist-cli today` | Tasks due today |
+| `todoist-cli today --json` | Today's tasks as JSON |
+| `todoist-cli briefing` | Generate daily briefing |
+
+### Obsidian Vault: `obsidian-helper`
+
+| Command | Description |
+|---------|-------------|
+| `obsidian-helper list` | List all markdown notes |
+| `obsidian-helper list --subdir Notes` | List notes in subdirectory |
+| `obsidian-helper list --tag project` | Filter by frontmatter tag |
+| `obsidian-helper list --full` | Show with titles |
+| `obsidian-helper search "keyword"` | Full-text search |
+| `obsidian-helper search "re.gex" --regex` | Regex search |
+| `obsidian-helper create "path/note"` | Create new note |
+| `obsidian-helper create "note" --title "Title" --tags "tag1,tag2"` | Create with metadata |
+| `obsidian-helper create "note" --content "Body text"` | Create with content |
+| `obsidian-helper append "path/note" "Add this"` | Append to existing note |
+| `obsidian-helper append "note" "text" --timestamp` | Append with timestamp |
+| `obsidian-helper daily` | Create/append daily note |
+| `obsidian-helper daily --content "Entry"` | Append to today's note |
+| `obsidian-helper tags` | List all tags in vault |
+| `obsidian-helper read "path/note"` | Read note content |
+
+### Google OAuth: `google-oauth-helper`
+
+| Command | Description |
+|---------|-------------|
+| `google-oauth-helper` | Show setup instructions |
+| `google-oauth-helper --client-id X --client-secret Y --scopes all` | Generate refresh token |
+| `google-oauth-helper --scopes gmail` | Gmail-only scopes |
+| `google-oauth-helper --scopes calendar` | Calendar-only scopes |
+| `google-oauth-helper --validate --refresh-token X --client-id Y --client-secret Z` | Validate existing token |
+| `google-oauth-helper --output json` | Output as JSON |
+
+### Text-to-Speech: `kokoro-tts`
+
+| Command | Description |
+|---------|-------------|
+| `echo "text" \| kokoro-tts --voice af_sarah - output.wav` | stdin to audio |
+| `kokoro-tts --voice am_adam --speed 1.2 input.txt output.wav` | File to audio |
+| Voices: `af_sarah`, `af_nicole`, `af_sky`, `am_adam`, `bf_emma`, `bm_george` | Available voices |
+
+### Modal GPU: `modal`
+
+| Command | Description |
+|---------|-------------|
+| `modal token new` | Generate new tokens (run locally) |
+| `modal run app.py` | Run function on GPU |
+| `modal deploy app.py` | Deploy as endpoint |
+
+---
+
 ## Core Development Agent Prompts
 
 ### Main Agent (`main`)
