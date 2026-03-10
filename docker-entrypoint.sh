@@ -346,12 +346,12 @@ setup_nix_home_manager() {
     
     echo "Setting up Nix Home-Manager..."
     
-    if [ ! -d /root/.nix-profile ]; then
+    if [ ! -d "$HOME/.nix-profile" ]; then
         echo "  ⚠️  Nix not installed, skipping home-manager setup"
         return 0
     fi
     
-    . /root/.nix-profile/etc/profile.d/nix.sh 2>/dev/null || true
+    . "$HOME/.nix-profile/etc/profile.d/nix.sh" 2>/dev/null || true
     
     NIX_REPO="$NIX_HOME_MANAGER_GITHUB_REPO"
     NIX_DIR="$WORKSPACE_DIR/nix-home"

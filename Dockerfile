@@ -40,18 +40,24 @@ RUN echo "=== Verifying ===" && \
     python3 --version && eslint --version | head -1 && \
     echo "=== Done ==="
 
+# Set HOME early so nix installs to the correct location
+ENV HOME=/zeroclaw-data
 ENV USER=root
+RUN mkdir -p /zeroclaw-data && chmod 755 /zeroclaw-data
+
+# Install Nix with HOME=/zeroclaw-data
 RUN mkdir -p /etc/nix && \
     echo "build-users-group =" > /etc/nix/nix.conf && \
     echo "sandbox = false" >> /etc/nix/nix.conf && \
     mkdir -m 0755 /nix && \
     curl -L https://nixos.org/nix/install | sh -s -- --no-daemon --yes && \
-    export PATH="/root/.nix-profile/bin:/nix/var/nix/profiles/default/bin:$PATH" && \
-    /root/.nix-profile/bin/nix-channel --add https://github.com/nix-community/home-manager/archive/master.tar.gz home-manager && \
-    /root/.nix-profile/bin/nix-channel --update && \
-    /root/.nix-profile/bin/nix-shell '<home-manager>' -A install && \
-    echo "Nix and home-manager installed"
-ENV PATH="/root/.nix-profile/bin:/nix/var/nix/profiles/default/bin:${PATH}"
+    export PATH="/zeroclaw-data/.nix-profile/bin:/nix/var/nix/profiles/default/bin:$PATH" && \
+    /zeroclaw-data/.nix-profile/bin/nix-channel --add https://github.com/nix-community/home-manager/archive/master.tar.gz home-manager && \
+    /zeroclaw-data/.nix-profile/bin/nix-channel --update && \
+    /zeroclaw-data/.nix-profile/bin/nix-shell '<home-manager>' -A install && \
+    echo "Nix and home-manager installed to $HOME"
+ENV PATH="/zeroclaw-data/.nix-profile/bin:/nix/var/nix/profiles/default/bin:${PATH}"
+
 ADD https://github.com/zeroclaw-labs/zeroclaw/releases/download/v0.1.7/zeroclaw-x86_64-unknown-linux-gnu.tar.gz /tmp/zeroclaw.tar.gz
 RUN tar xzf /tmp/zeroclaw.tar.gz -C /usr/local/bin zeroclaw && rm /tmp/zeroclaw.tar.gz && chmod +x /usr/local/bin/zeroclaw
 COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
@@ -62,7 +68,7 @@ RUN chmod +x /usr/local/bin/zeroclaw-scripts/*.py && \
     ln -s /usr/local/bin/zeroclaw-scripts/todoist-cli.py /usr/local/bin/todoist-cli && \
     ln -s /usr/local/bin/zeroclaw-scripts/google-oauth-helper.py /usr/local/bin/google-oauth-helper && \
     ln -s /usr/local/bin/zeroclaw-scripts/obsidian-helper.py /usr/local/bin/obsidian-helper
-ENV HOME=/zeroclaw-data
+
 WORKDIR /zeroclaw-data
 EXPOSE 42617
 ENTRYPOINT ["/usr/local/bin/docker-entrypoint.sh"]

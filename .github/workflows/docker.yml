@@ -3,6 +3,20 @@ name: Build and Push Docker Image
 on:
   push:
     branches: [main]
+    paths:
+      - 'Dockerfile'
+      - 'docker-entrypoint.sh'
+      - 'scripts/**'
+      - 'skills/**'
+      - '.github/workflows/docker.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'Dockerfile'
+      - 'docker-entrypoint.sh'
+      - 'scripts/**'
+      - 'skills/**'
+      - '.github/workflows/docker.yml'
   workflow_dispatch:
 
 env:
@@ -41,6 +55,6 @@ jobs:
         uses: docker/build-push-action@v5
         with:
           context: .
-          push: true
+          push: ${{ github.event_name != 'pull_request' }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
