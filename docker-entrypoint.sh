@@ -160,13 +160,296 @@ setup_gmail_oauth
 setup_obsidian
 
 # =============================================================================
+# GitHub Tokens Management (Multi-Token Support)
+# =============================================================================
+
+setup_github_tokens() {
+    echo "Setting up GitHub tokens..."
+    
+    TOKENS_FILE="$ZERCLAW_DIR/.github-tokens"
+    mkdir -p "$ZERCLAW_DIR"
+    mkdir -p ~/.config/gh
+    
+    if [ -n "$GITHUB_TOKENS" ]; then
+        echo "  Parsing GITHUB_TOKENS (comma-separated)..."
+        
+        TOKEN_COUNT=0
+        PRIMARY_TOKEN=""
+        
+        rm -f "$TOKENS_FILE"
+        
+        OLD_IFS="$IFS"
+        IFS=','
+        for token_entry in $GITHUB_TOKENS; do
+            token_entry=$(echo "$token_entry" | tr -d ' ')
+            [ -z "$token_entry" ] && continue
+            
+            case "$token_entry" in
+                *:*)
+                    TOKEN_NAME=$(echo "$token_entry" | cut -d':' -f1)
+                    TOKEN_VALUE=$(echo "$token_entry" | cut -d':' -f2-)
+                    ;;
+                *)
+                    TOKEN_NAME="default"
+                    TOKEN_VALUE="$token_entry"
+                    ;;
+            esac
+            
+            if [ -n "$TOKEN_VALUE" ]; then
+                echo "$TOKEN_NAME=$TOKEN_VALUE" >> "$TOKENS_FILE"
+                TOKEN_COUNT=$((TOKEN_COUNT + 1))
+                echo "  ✓ Token '$TOKEN_NAME' registered"
+                
+                if [ -z "$PRIMARY_TOKEN" ]; then
+                    PRIMARY_TOKEN="$TOKEN_VALUE"
+                fi
+            fi
+        done
+        IFS="$OLD_IFS"
+        
+        chmod 600 "$TOKENS_FILE"
+        echo "  $TOKEN_COUNT tokens configured"
+        
+        if [ -n "$PRIMARY_TOKEN" ]; then
+            export GITHUB_TOKEN="$PRIMARY_TOKEN"
+            export GH_TOKEN="$PRIMARY_TOKEN"
+            
+            git config --global credential.helper store
+            echo "https://${PRIMARY_TOKEN}:x-oauth-basic@github.com" > ~/.git-credentials
+            chmod 600 ~/.git-credentials
+            
+            cat > ~/.config/gh/hosts.yml << GH_HOSTS
+github.com:
+    oauth_token: ${PRIMARY_TOKEN}
+    git_protocol: ssh
+    users:
+        zeroclaw:
+            oauth_token: ${PRIMARY_TOKEN}
+    user: zeroclaw
+GH_HOSTS
+            chmod 600 ~/.config/gh/hosts.yml
+            
+            echo "  Primary token set as GITHUB_TOKEN/GH_TOKEN"
+            echo "  gh CLI configured with primary token"
+        fi
+        
+    elif [ -n "$GITHUB_TOKEN" ]; then
+        echo "  Using single GITHUB_TOKEN"
+        export GH_TOKEN="$GITHUB_TOKEN"
+        
+        git config --global credential.helper store
+        echo "https://${GITHUB_TOKEN}:x-oauth-basic@github.com" > ~/.git-credentials
+        chmod 600 ~/.git-credentials
+        
+        cat > ~/.config/gh/hosts.yml << GH_HOSTS
+github.com:
+    oauth_token: ${GITHUB_TOKEN}
+    git_protocol: ssh
+    users:
+        zeroclaw:
+            oauth_token: ${GITHUB_TOKEN}
+    user: zeroclaw
+GH_HOSTS
+        chmod 600 ~/.config/gh/hosts.yml
+        
+        echo "default=$GITHUB_TOKEN" > "$TOKENS_FILE"
+        chmod 600 "$TOKENS_FILE"
+        echo "  gh CLI configured"
+        
+    elif [ -n "$GH_TOKEN" ]; then
+        echo "  Using GH_TOKEN"
+        export GITHUB_TOKEN="$GH_TOKEN"
+        
+        git config --global credential.helper store
+        echo "https://${GH_TOKEN}:x-oauth-basic@github.com" > ~/.git-credentials
+        chmod 600 ~/.git-credentials
+        
+        cat > ~/.config/gh/hosts.yml << GH_HOSTS
+github.com:
+    oauth_token: ${GH_TOKEN}
+    git_protocol: ssh
+    users:
+        zeroclaw:
+            oauth_token: ${GH_TOKEN}
+    user: zeroclaw
+GH_HOSTS
+        chmod 600 ~/.config/gh/hosts.yml
+        
+        echo "default=$GH_TOKEN" > "$TOKENS_FILE"
+        chmod 600 "$TOKENS_FILE"
+        echo "  gh CLI configured"
+    else
+        echo "  No GitHub tokens configured"
+    fi
+    
+    echo "GitHub tokens ready."
+}
+
+get_github_token_for_repo() {
+    local repo="$1"
+    local tokens_file="$ZERCLAW_DIR/.github-tokens"
+    
+    if [ ! -f "$tokens_file" ]; then
+        echo "${GITHUB_TOKEN:-$GH_TOKEN}"
+        return
+    fi
+    
+    ORG_NAME=$(echo "$repo" | cut -d'/' -f1)
+    
+    TOKEN_VALUE=$(grep "^${ORG_NAME}=" "$tokens_file" 2>/dev/null | cut -d'=' -f2-)
+    if [ -z "$TOKEN_VALUE" ]; then
+        TOKEN_VALUE=$(grep "^default=" "$tokens_file" 2>/dev/null | cut -d'=' -f2-)
+    fi
+    
+    echo "${TOKEN_VALUE:-${GITHUB_TOKEN:-$GH_TOKEN}}"
+}
+
+switch_gh_context() {
+    local org_or_token_name="$1"
+    local tokens_file="$ZERCLAW_DIR/.github-tokens"
+    
+    if [ ! -f "$tokens_file" ]; then
+        echo "No tokens file found"
+        return 1
+    fi
+    
+    TOKEN_VALUE=$(grep "^${org_or_token_name}=" "$tokens_file" 2>/dev/null | cut -d'=' -f2-)
+    
+    if [ -z "$TOKEN_VALUE" ]; then
+        echo "Token '$org_or_token_name' not found"
+        return 1
+    fi
+    
+    export GITHUB_TOKEN="$TOKEN_VALUE"
+    export GH_TOKEN="$TOKEN_VALUE"
+    
+    cat > ~/.config/gh/hosts.yml << GH_HOSTS
+github.com:
+    oauth_token: ${TOKEN_VALUE}
+    git_protocol: ssh
+    users:
+        ${org_or_token_name}:
+            oauth_token: ${TOKEN_VALUE}
+    user: ${org_or_token_name}
+GH_HOSTS
+    chmod 600 ~/.config/gh/hosts.yml
+    
+    echo "Switched gh context to '$org_or_token_name'"
+}
+
+# =============================================================================
+# Nix Home-Manager Deployment
+# =============================================================================
+
+setup_nix_home_manager() {
+    [ -z "$NIX_HOME_MANAGER_GITHUB_REPO" ] && return 0
+    
+    echo "Setting up Nix Home-Manager..."
+    
+    if [ ! -d /root/.nix-profile ]; then
+        echo "  ⚠️  Nix not installed, skipping home-manager setup"
+        return 0
+    fi
+    
+    . /root/.nix-profile/etc/profile.d/nix.sh 2>/dev/null || true
+    
+    NIX_REPO="$NIX_HOME_MANAGER_GITHUB_REPO"
+    NIX_DIR="$WORKSPACE_DIR/nix-home"
+    
+    AUTH_TOKEN=$(get_github_token_for_repo "$NIX_REPO")
+    
+    case "$NIX_REPO" in
+        https://*|http://*|git@*)
+            REPO_URL="$NIX_REPO"
+            ;;
+        *)
+            if [ -n "$AUTH_TOKEN" ]; then
+                REPO_URL="https://${AUTH_TOKEN}@github.com/${NIX_REPO}.git"
+            else
+                REPO_URL="https://github.com/${NIX_REPO}.git"
+            fi
+            ;;
+    esac
+    
+    echo "  Cloning $NIX_REPO..."
+    
+    if [ -d "$NIX_DIR" ]; then
+        (cd "$NIX_DIR" && git pull --rebase) || echo "  ⚠️  Failed to pull nix-home"
+    else
+        if git clone --depth 1 "$REPO_URL" "$NIX_DIR" 2>/dev/null; then
+            echo "  ✓ Cloned nix-home repo"
+        else
+            echo "  ⚠️  Failed to clone nix-home repo"
+            return 1
+        fi
+    fi
+    
+    if [ -f "$NIX_DIR/flake.nix" ]; then
+        echo "  Found flake.nix, applying home-manager config..."
+        
+        if [ -n "$NIX_HOME_MANAGER_PROFILE" ]; then
+            PROFILE_ARG="--flake .#$NIX_HOME_MANAGER_PROFILE"
+        else
+            PROFILE_ARG="--flake ."
+        fi
+        
+        export HOME=/zeroclaw-data
+        export NIX_PATH="nixpkgs=channel:nixos-unstable"
+        
+        if home-manager switch $PROFILE_ARG --extra-experimental-features nix-command --extra-experimental-features flakes; then
+            echo "  ✓ Home-manager configuration applied"
+        else
+            echo "  ⚠️  Failed to apply home-manager configuration"
+            echo "  Attempting to init home-manager first..."
+            
+            if [ ! -f "$HOME/.config/home-manager/home.nix" ]; then
+                mkdir -p "$HOME/.config/home-manager"
+                cat > "$HOME/.config/home-manager/home.nix" << 'HOMENIX'
+{ config, pkgs, ... }:
+{
+  home.packages = with pkgs; [
+    git
+    vim
+    htop
+    jq
+  ];
+  
+  programs.git = {
+    enable = true;
+    userName = "zeroclaw";
+    userEmail = "zeroclaw@zeroclaw.dev";
+  };
+}
+HOMENIX
+            fi
+            
+            home-manager switch --flake "$NIX_DIR" --extra-experimental-features nix-command --extra-experimental-features flakes || \
+                echo "  ⚠️  Manual home-manager application may be required"
+        fi
+        
+    elif [ -f "$NIX_DIR/home.nix" ]; then
+        echo "  Found home.nix, applying..."
+        
+        mkdir -p "$HOME/.config/home-manager"
+        cp "$NIX_DIR/home.nix" "$HOME/.config/home-manager/home.nix"
+        
+        home-manager switch || echo "  ⚠️  Failed to apply home.nix"
+    else
+        echo "  ⚠️  No flake.nix or home.nix found in repo"
+    fi
+    
+    echo "Nix Home-Manager setup complete."
+}
+
+setup_github_tokens
+
+# =============================================================================
 # Git Repository Cloning
 # =============================================================================
 
 clone_git_repos() {
     [ -z "$ZEROCLAW_GIT_REPOS" ] && return 0
     
-    AUTH_TOKEN="${GITHUB_TOKEN:-$GH_TOKEN}"
     echo "Cloning git repos into workspace..."
     
     OLD_IFS="$IFS"
@@ -174,6 +457,8 @@ clone_git_repos() {
     for repo in $ZEROCLAW_GIT_REPOS; do
         repo=$(echo "$repo" | tr -d ' ')
         [ -z "$repo" ] && continue
+        
+        AUTH_TOKEN=$(get_github_token_for_repo "$repo")
         
         case "$repo" in
             https://*|http://*|git@*)
@@ -872,6 +1157,7 @@ copy_skills_to_workspace() {
 # =============================================================================
 
 clone_git_repos
+setup_nix_home_manager
 copy_skills_to_workspace
 generate_soul_md
 generate_agents_md

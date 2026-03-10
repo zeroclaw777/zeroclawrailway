@@ -6,7 +6,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     netcat-openbsd dnsutils httpie gh \
     postgresql-client mysql-client redis-tools sqlite3 \
     python3 python3-pip python3-venv nodejs npm build-essential jq yq \
-    # Kokoro TTS dependencies
     espeak-ng \
     && rm -rf /var/lib/apt/lists/*
 ENV PATH="/usr/local/go/bin:/root/.cargo/bin:/root/.local/bin:/opt/venv/bin:${PATH}"
@@ -40,6 +39,14 @@ RUN echo "=== Verifying ===" && \
     jq --version && yq --version | head -1 && \
     python3 --version && eslint --version | head -1 && \
     echo "=== Done ==="
+
+RUN curl -L https://nixos.org/nix/install | sh -s -- --no-daemon --yes && \
+    . /root/.nix-profile/etc/profile.d/nix.sh && \
+    nix-channel --add https://github.com/nix-community/home-manager/archive/master.tar.gz home-manager && \
+    nix-channel --update && \
+    nix-shell '<home-manager>' -A install && \
+    echo "Nix and home-manager installed"
+ENV PATH="/root/.nix-profile/bin:/nix/var/nix/profiles/default/bin:${PATH}"
 ADD https://github.com/zeroclaw-labs/zeroclaw/releases/download/v0.1.7/zeroclaw-x86_64-unknown-linux-gnu.tar.gz /tmp/zeroclaw.tar.gz
 RUN tar xzf /tmp/zeroclaw.tar.gz -C /usr/local/bin zeroclaw && rm /tmp/zeroclaw.tar.gz && chmod +x /usr/local/bin/zeroclaw
 COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
