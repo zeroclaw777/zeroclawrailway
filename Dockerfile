@@ -40,6 +40,7 @@ RUN echo "=== Verifying ===" && \
     python3 --version && eslint --version | head -1 && \
     echo "=== Done ==="
 
+ENV USER=root
 RUN mkdir -p /etc/nix && \
     echo "build-users-group =" > /etc/nix/nix.conf && \
     echo "sandbox = false" >> /etc/nix/nix.conf && \
