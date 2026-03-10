@@ -1,5 +1,5 @@
 #!/bin/sh
-# Temporarily disable set -e for debugging
+# Temporarily disable set -e for debugging crash loop
 # set -e
 
 # Error handler
