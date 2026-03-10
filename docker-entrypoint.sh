@@ -1,5 +1,9 @@
 #!/bin/sh
-set -e
+# Temporarily disable set -e for debugging
+# set -e
+
+# Error handler
+trap 'echo "ERROR: Script failed at line $LINENO"; exit 1' ERR
 
 export HOME=/zeroclaw-data
 WORKSPACE_DIR="/zeroclaw-data/.zeroclaw/workspace"
@@ -1156,11 +1160,17 @@ copy_skills_to_workspace() {
 # Main Execution
 # =============================================================================
 
+echo "DEBUG: Starting main execution..."
 clone_git_repos
+echo "DEBUG: clone_git_repos completed"
 setup_nix_home_manager || true
+echo "DEBUG: setup_nix_home_manager completed"
 copy_skills_to_workspace
+echo "DEBUG: copy_skills_to_workspace completed"
 generate_soul_md
+echo "DEBUG: generate_soul_md completed"
 generate_agents_md
+echo "DEBUG: generate_agents_md completed"
 
 # Gateway binds to localhost only - NOT exposed to internet
 # Telegram channel works independently and doesn't need public gateway
@@ -1292,5 +1302,10 @@ echo "  Config:    $ZERCLAW_DIR/config.toml"
 echo "  SOUL.md:   $WORKSPACE_DIR/SOUL.md"
 [ -f "$WORKSPACE_DIR/AGENTS.md" ] && echo "  AGENTS.md: $WORKSPACE_DIR/AGENTS.md"
 echo ""
+
+echo "DEBUG: About to exec: $@"
+echo "DEBUG: zeroclaw binary location:"
+ls -la /usr/local/bin/zeroclaw 2>&1 || echo "  zeroclaw binary NOT FOUND"
+echo "DEBUG: PATH=$PATH"
 
 exec "$@"

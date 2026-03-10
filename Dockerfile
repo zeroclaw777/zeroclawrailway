@@ -59,7 +59,11 @@ RUN mkdir -p /etc/nix && \
 ENV PATH="/zeroclaw-data/.nix-profile/bin:/nix/var/nix/profiles/default/bin:${PATH}"
 
 ADD https://github.com/zeroclaw-labs/zeroclaw/releases/download/v0.1.7/zeroclaw-x86_64-unknown-linux-gnu.tar.gz /tmp/zeroclaw.tar.gz
-RUN tar xzf /tmp/zeroclaw.tar.gz -C /usr/local/bin zeroclaw && rm /tmp/zeroclaw.tar.gz && chmod +x /usr/local/bin/zeroclaw
+RUN tar xzf /tmp/zeroclaw.tar.gz -C /usr/local/bin zeroclaw && \
+    rm /tmp/zeroclaw.tar.gz && \
+    chmod +x /usr/local/bin/zeroclaw && \
+    ls -la /usr/local/bin/zeroclaw && \
+    /usr/local/bin/zeroclaw --version || echo "zeroclaw binary check completed"
 COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
 RUN chmod +x /usr/local/bin/docker-entrypoint.sh
 COPY scripts/ /usr/local/bin/zeroclaw-scripts/
