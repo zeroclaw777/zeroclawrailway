@@ -40,7 +40,8 @@ RUN echo "=== Verifying ===" && \
     python3 --version && eslint --version | head -1 && \
     echo "=== Done ==="
 
-RUN curl -L https://nixos.org/nix/install | sh -s -- --no-daemon --yes && \
+RUN mkdir -m 0755 /nix && \
+    curl -L https://nixos.org/nix/install | sh -s -- --no-daemon --yes && \
     . /root/.nix-profile/etc/profile.d/nix.sh && \
     nix-channel --add https://github.com/nix-community/home-manager/archive/master.tar.gz home-manager && \
     nix-channel --update && \
