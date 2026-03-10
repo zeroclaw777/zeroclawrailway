@@ -760,6 +760,284 @@ docker run \
 
 ---
 
+## State Persistence Architecture
+
+ZeroClaw Railway services need to persist customizations across deployments. This section describes the architecture for external state storage.
+
+### The Problem
+
+- **Schedules, RSS feeds, preferences lost on redeployment** - Each new deployment starts fresh
+- **Railway service IDs change** - Cannot rely on platform-specific IDs
+- **Service names are stable** - `your-service-name` remains the same
+- **Multi-platform support needed** - Railway, Fly.io, Render, etc.
+
+### Solution: External State Store
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                    State Persistence Layer                       │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                  │
+│  Service Identity: service_name + owner + platform              │
+│  Key: "railway:your-org:your-service-name"            │
+│                                                                  │
+│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐           │
+│  │   NeonDB     │  │   Redis      │  │   Git Repo   │           │
+│  │ (PostgreSQL) │  │  (Hot State) │  │ (Config Ver) │           │
+│  └──────┬───────┘  └──────┬───────┘  └──────┬───────┘           │
+│         │                 │                 │                    │
+│         └─────────────────┴─────────────────┘                   │
+│                           │                                      │
+│                    State Manager API                             │
+│                           │                                      │
+└───────────────────────────┼─────────────────────────────────────┘
+                            │
+            ┌───────────────┼───────────────┐
+            │               │               │
+     ┌──────▼──────┐ ┌──────▼──────┐ ┌──────▼──────┐
+     │ zeroclaw-   │ │ zeroclaw_   │ │ zeroclaw-   │
+     │ personal    │ │ general_    │ │ railway-    │
+     │ assistant   │ │ dev_bot     │ │ improver    │
+     └─────────────┘ └─────────────┘ └─────────────┘
+```
+
+### State Categories
+
+| Category | Storage | Examples | TTL |
+|----------|---------|----------|-----|
+| **Schedules** | NeonDB | Daily RSS, reminders, periodic tasks | Persistent |
+| **Preferences** | NeonDB | User settings, feed URLs, channels | Persistent |
+| **Runtime State** | Redis | Active schedules, cached data, sessions | 24h |
+| **Configs** | Git Repo | Nix home.nix, skills, AGENTS.md | Versioned |
+| **Generated Content** | S3/R2 | PDFs, audio files, images | 30 days |
+
+### Service Identity
+
+Services are identified by a composite key that remains stable across deployments:
+
+```bash
+# Identity components (set via environment variables)
+ZEROCLAW_SERVICE_NAME=your-service-name  # Service name
+ZEROCLAW_SERVICE_OWNER=your-org                     # Owner/org
+ZEROCLAW_PLATFORM=railway                           # Deployment platform
+
+# Composite state key
+STATE_KEY="${ZEROCLAW_PLATFORM}:${ZEROCLAW_SERVICE_OWNER}:${ZEROCLAW_SERVICE_NAME}"
+# Example: "railway:your-org:your-service-name"
+```
+
+### Database Schema (NeonDB)
+
+```sql
+-- Service registry
+CREATE TABLE services (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    state_key VARCHAR(255) UNIQUE NOT NULL,
+    service_name VARCHAR(255) NOT NULL,
+    owner VARCHAR(255) NOT NULL,
+    platform VARCHAR(50) NOT NULL,
+    created_at TIMESTAMP DEFAULT NOW(),
+    last_deployment TIMESTAMP DEFAULT NOW(),
+    metadata JSONB DEFAULT '{}'
+);
+
+-- Schedules (RSS feeds, reminders, periodic tasks)
+CREATE TABLE schedules (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    service_key VARCHAR(255) REFERENCES services(state_key) ON DELETE CASCADE,
+    schedule_type VARCHAR(50) NOT NULL,    -- 'cron', 'interval', 'once'
+    schedule_expr VARCHAR(100) NOT NULL,   -- '0 21:25 * * *', '3600s'
+    task_type VARCHAR(100) NOT NULL,       -- 'rss_aggregate', 'reminder', 'custom'
+    task_config JSONB NOT NULL,            -- Task-specific configuration
+    enabled BOOLEAN DEFAULT true,
+    created_at TIMESTAMP DEFAULT NOW(),
+    last_run TIMESTAMP,
+    next_run TIMESTAMP,
+    run_count INTEGER DEFAULT 0
+);
+
+-- User preferences
+CREATE TABLE preferences (
+    service_key VARCHAR(255) REFERENCES services(state_key) ON DELETE CASCADE,
+    key VARCHAR(255) NOT NULL,
+    value JSONB NOT NULL,
+    updated_at TIMESTAMP DEFAULT NOW(),
+    PRIMARY KEY (service_key, key)
+);
+
+-- RSS feed subscriptions
+CREATE TABLE rss_subscriptions (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    service_key VARCHAR(255) REFERENCES services(state_key) ON DELETE CASCADE,
+    feed_url VARCHAR(500) NOT NULL,
+    feed_name VARCHAR(255),
+    category VARCHAR(100),                 -- 'science', 'geopolitics', 'tech'
+    enabled BOOLEAN DEFAULT true,
+    last_fetched TIMESTAMP,
+    etag VARCHAR(255),
+    last_error TEXT,
+    UNIQUE(service_key, feed_url)
+);
+
+-- Generated content metadata
+CREATE TABLE generated_content (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    service_key VARCHAR(255) REFERENCES services(state_key) ON DELETE CASCADE,
+    content_type VARCHAR(50) NOT NULL,     -- 'pdf', 'audio', 'image'
+    storage_url VARCHAR(500) NOT NULL,     -- S3/R2 URL
+    source_task VARCHAR(100),              -- 'rss_aggregate', 'tts'
+    created_at TIMESTAMP DEFAULT NOW(),
+    expires_at TIMESTAMP,
+    metadata JSONB DEFAULT '{}'
+);
+
+-- Create indexes
+CREATE INDEX idx_schedules_service ON schedules(service_key);
+CREATE INDEX idx_schedules_next_run ON schedules(next_run) WHERE enabled = true;
+CREATE INDEX idx_preferences_service ON preferences(service_key);
+CREATE INDEX idx_rss_service ON rss_subscriptions(service_key);
+```
+
+### Environment Variables
+
+| Variable | Description | Required |
+|----------|-------------|----------|
+| `ZEROCLAW_STATE_STORE_ENABLED` | Enable state persistence | `true` |
+| `ZEROCLAW_STATE_STORE_URL` | PostgreSQL connection URL | Yes |
+| `ZEROCLAW_STATE_STORE_REDIS_URL` | Redis URL for hot state | Optional |
+| `ZEROCLAW_SERVICE_NAME` | Unique service name | Yes |
+| `ZEROCLAW_SERVICE_OWNER` | Owner/org identifier | Yes |
+| `ZEROCLAW_PLATFORM` | Deployment platform | Yes |
+| `ZEROCLAW_STATE_CONTENT_BUCKET` | S3/R2 bucket for generated content | Optional |
+
+### State Manager API
+
+The state manager is implemented as a Python module in `scripts/state_manager.py`:
+
+```python
+# Example usage in docker-entrypoint.sh or ZeroClaw skills
+
+from state_manager import StateManager
+
+# Initialize
+state = StateManager(
+    service_name="your-service-name",
+    owner="your-org",
+    platform="railway"
+)
+
+# Save a schedule
+state.save_schedule(
+    schedule_type="cron",
+    schedule_expr="0 21:25 * * *",
+    task_type="rss_aggregate",
+    task_config={
+        "feeds": ["https://example.com/rss"],
+        "channels": ["telegram"],
+        "include_images": True,
+        "format": "pdf"
+    }
+)
+
+# Restore schedules on startup
+schedules = state.get_schedules()
+for sched in schedules:
+    # Re-register with ZeroClaw's scheduler
+    register_schedule(sched)
+
+# Save preference
+state.set_preference("default_voice", "af_sarah")
+state.set_preference("rss_categories", ["science", "geopolitics"])
+
+# Get preference
+voice = state.get_preference("default_voice")
+
+# Save generated content reference
+state.save_content(
+    content_type="pdf",
+    storage_url="s3://bucket/reports/2026-03-10.pdf",
+    source_task="rss_aggregate",
+    expires_days=30
+)
+```
+
+### State Restoration Flow
+
+On container startup:
+
+```
+1. docker-entrypoint.sh runs
+2. State Manager initializes with service identity
+3. If STATE_STORE_ENABLED=true:
+   a. Connect to NeonDB
+   b. Register/update service in registry
+   c. Restore schedules → re-register with ZeroClaw scheduler
+   d. Restore preferences → set environment variables
+   e. Restore RSS subscriptions → configure feed reader
+4. Continue with normal startup
+```
+
+### Example: RSS Schedule Persistence
+
+**User creates schedule:**
+```
+User: "Aggregate science news daily at 9:25 UTC and send to this channel"
+```
+
+**ZeroClaw:**
+1. Creates schedule in memory
+2. Calls `state.save_schedule()` to persist to NeonDB
+3. Schedule survives redeployments
+
+**On next deployment:**
+1. `docker-entrypoint.sh` calls `state.get_schedules()`
+2. Restores: "Aggregate science news daily at 9:25 UTC"
+3. ZeroClaw continues sending daily reports
+
+### Example: Nix Config Persistence
+
+The `NIX_HOME_MANAGER_GITHUB_REPO` already provides config versioning:
+
+```
+1. User: "Install ripgrep and fd tools"
+2. ZeroClaw updates home.nix in the git repo
+3. Commits and pushes changes
+4. Next deployment pulls updated config
+5. Tools are automatically installed via home-manager
+```
+
+### Implementation Files
+
+```
+scripts/
+├── state_manager.py          # Core state management API
+├── state_schedules.py        # Schedule-specific operations
+├── state_preferences.py      # Preference management
+└── state_content.py          # Generated content tracking
+
+skills/
+├── state-persistence.md      # Skill documentation for ZeroClaw
+└── rss-scheduling.md         # RSS-specific scheduling docs
+```
+
+### NeonDB Setup
+
+1. Create a NeonDB project: https://neon.tech
+2. Get connection string from dashboard
+3. Set environment variable:
+   ```bash
+   ZEROCLAW_STATE_STORE_URL=postgresql://user:pass@ep-xxx.us-east-2.aws.neon.tech/zeroclaw_state?sslmode=require
+   ```
+4. Tables are auto-created on first run
+
+### Cost Estimate (NeonDB Free Tier)
+
+- **Free tier**: 0.5 GB storage, 100 hours compute/month
+- **Estimated usage per service**: ~1MB storage, ~5 hours/month
+- **Supports**: ~100 services on free tier
+
+---
+
 ## ZeroClaw Native Documentation
 
 For complete documentation of all ZeroClaw features, see the official docs:
